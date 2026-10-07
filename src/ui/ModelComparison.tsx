@@ -7,12 +7,12 @@ import type {ComparisonResult} from './comparison';
 import {clock,sampleAt,type Sample} from './scenario';
 import {RateEquivalent} from './RateEquivalent';
 const colors:Record<ModelKey,string>={eleveld:'#087d79',schnider:'#7660ba',marsh:'#a26527'};
-interface Props {results:ComparisonResult[];patient:PatientCovariates;time:number;preview:boolean;mode:string;onSeek:(t:number)=>void}
-export function ModelComparison({results,patient,time,preview,mode,onSeek}:Props){
+interface Props {results:ComparisonResult[];patient:PatientCovariates;time:number;preview:boolean;duration:number;mode:string;onSeek:(t:number)=>void}
+export function ModelComparison({results,patient,time,preview,duration,mode,onSeek}:Props){
  const host=useRef<HTMLDivElement>(null),[width,setWidth]=useState(700),[hover,setHover]=useState<number|null>(null),[micro,setMicro]=useState(false);
  useLayoutEffect(()=>{const observer=new ResizeObserver(entries=>setWidth(entries[0]!.contentRect.width));if(host.current)observer.observe(host.current);return()=>observer.disconnect();},[]);
  const available=results.filter(r=>r.available);
- const start=preview?0:Math.max(0,time-20),end=preview?60:Math.max(20,time);
+ const start=preview?0:Math.max(0,time-20),end=preview?duration:Math.max(20,time);
  const inspectedTime=hover===null?time:Math.max(start,Math.min(hover,preview?end:time));
  const snapshots=available.map(r=>({...r,sample:sampleAt(r.rows,inspectedTime)}));
  const x=scaleLinear().domain([start,end]).range([48,width-20]);

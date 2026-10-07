@@ -6,8 +6,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { curveStepAfter, line, scaleLinear } from 'd3';
 import type { Sample } from './scenario';
 import { clock, sampleAt } from './scenario';
-interface Props { observations?:BISObservation[]; weight:Kg; rows: Sample[]; time: number; stop: number | null; mode?: string; preview: boolean; onSeek: (time: number) => void }
-export function Charts({ observations=[], weight, rows, time, stop, preview, onSeek, mode }: Props) {
+interface Props { observations?:BISObservation[]; weight:Kg; rows: Sample[]; time: number; stop: number | null; duration:number; mode?: string; preview: boolean; onSeek: (time: number) => void }
+export function Charts({ observations=[], weight, rows, time, stop, duration, preview, onSeek, mode }: Props) {
   const [showTrend,setShowTrend]=useState(true);
   const [averageSeconds,setAverageSeconds]=useState(60);
   const [includeLoading,setIncludeLoading]=useState(false);
@@ -21,7 +21,7 @@ export function Charts({ observations=[], weight, rows, time, stop, preview, onS
     return () => observer.disconnect();
   }, []);
   const start = preview ? 0 : Math.max(0, time - 20);
-  const end = preview ? 60 : Math.max(20, time);
+  const end = preview ? duration : Math.max(20, time);
   const plotRight=width-(showTrend?62:20);
   const x = scaleLinear().domain([start, end]).range([45, plotRight]);
   const y = scaleLinear().domain([0, Math.max(2, ...rows.map(r => Math.max(r.cp, r.ce, r.target ?? 0))) * 1.13]).nice().range([244, 20]);

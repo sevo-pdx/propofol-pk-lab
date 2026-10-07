@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BookOpen, ChevronDown, CircleHelp, FlaskConical, Pause, Play, RotateCcw, SkipForward, SlidersHorizontal, X } from 'lucide-react';
 import { EDUCATIONAL_NOTICE, microconstants, quantity as u } from '../index';
 import type { PatientCovariates } from '../index';
-import { buildScenario, buildTCIScenario, defaultTargets, clock, END, initialPatient, sampleAt } from './scenario';
+import { buildScenario, buildTCIScenario, defaultTargets, clock, DEFAULT_END, MAX_END, initialPatient, sampleAt } from './scenario';
 import { RateEquivalent } from './RateEquivalent';
 import { Charts } from './Charts';
 import { Timeline } from './Timeline';
@@ -26,11 +26,14 @@ export default function App() {
   const [draft, setDraft] = useState({ age: '35', height: '170', weight: '70', sex: 'male', drugs: false, pma: '' });
   const [course, setCourse] = useState({ rate: 5, stop: 30 });
   const [input, setInput] = useState({ rate: '5', stop: '30' });
+  const [duration,setDuration]=useState(DEFAULT_END);
   const [mode, setMode] = useState<TargetMode | 'prescribed'>('ce');
   const [events, setEvents] = useState<TargetEvent[]>(defaultTargets);
   const [liveTarget, setLiveTarget] = useState('3');
-  const scenario = useMemo(() => mode === 'prescribed' ? buildScenario(patient, course, model) : buildTCIScenario(patient, mode, events, model), [patient, course, mode, events, model]);
-  const comparison=useMemo(()=>compare?buildComparison(patient,mode,events,course):[],[compare,patient,mode,events,course]);
+  const activeEvents=useMemo(()=>events.filter(event=>event.time<=duration),[events,duration]);
+  const hiddenEventCount=events.length-activeEvents.length;
+  const scenario = useMemo(() => mode === 'prescribed' ? buildScenario(patient, course, model, duration) : buildTCIScenario(patient, mode, activeEvents, model, duration), [patient, course, mode, activeEvents, model, duration]);
+  const comparison=useMemo(()=>compare?buildComparison(patient,mode,events,course,duration):[],[compare,patient,mode,events,course,duration]);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(30);
@@ -51,11 +54,11 @@ export default function App() {
     let last = performance.now();
     const timer = window.setInterval(() => {
       const now = performance.now(), delta = (now - last) / 60000 * speed; last = now;
-      setTime(t => Math.min(END, t + delta));
+      setTime(t => Math.min(duration, t + delta));
     }, 80);
     return () => clearInterval(timer);
-  }, [playing, speed]);
-  useEffect(() => { if (time >= END) setPlaying(false); }, [time]);
+  }, [playing, speed, duration]);
+  useEffect(() => { if (time >= duration) setPlaying(false); }, [time,duration]);
   useEffect(() => {
     const stopHidden = () => { if (document.hidden) setPlaying(false); };
     document.addEventListener('visibilitychange', stopHidden);
@@ -69,13 +72,14 @@ export default function App() {
       if (!(modelKey==='marsh'&&!compare?[draft.weight,input.rate,input.stop]:[draft.age, draft.height, draft.weight, input.rate, input.stop]).every(v => v.trim())) throw new Error('Complete all numeric fields.');
       const next: PatientCovariates = modelKey==='marsh'&&!compare?{...patient,weight:u(Number(draft.weight),'kg')}:{ age: u(Number(draft.age), 'yr'), sex: draft.sex as 'male' | 'female', height: u(Number(draft.height), 'cm'), weight: u(Number(draft.weight), 'kg'), concomitantAnaesthetics: draft.drugs, ...(draft.pma.trim() ? { postMenstrualAge: u(Number(draft.pma), 'wk') } : {}) };
       const c = { rate: Number(input.rate), stop: Number(input.stop) };
-      buildScenario(next, c, model); if(JSON.stringify(next)!==JSON.stringify(patient))setObservations([]); setPatient(next); setCourse(c); reset(); setError(''); setNotice('Changes applied · simulation reset to 00:00');
+      buildScenario(next, c, model, duration); if(JSON.stringify(next)!==JSON.stringify(patient))setObservations([]); setPatient(next); setCourse(c); reset(); setError(''); setNotice('Changes applied · simulation reset to 00:00');
     } catch (e) { setError(e instanceof Error ? e.message : 'Check the entered values.'); }
   }
   function changeEvents(next: TargetEvent[]) {
-    const validated = validateEvents(next, END);
-    if (mode !== 'prescribed') buildTCIScenario(patient, mode, validated, model);
-    setEvents(validated); setNotice('Target course recalculated · playhead preserved');
+    const validated = validateEvents(next, duration);
+    const retained=validateEvents([...validated,...events.filter(event=>event.time>duration)],MAX_END).sort((a,b)=>a.time-b.time);
+    if (mode !== 'prescribed') buildTCIScenario(patient, mode, validated, model, duration);
+    setEvents(retained); setNotice('Target course recalculated · playhead preserved');
   }
   function applyTarget() {
     try {
@@ -94,6 +98,7 @@ export default function App() {
     setDraft({ age: ages[value] ?? '35', height: '170', weight: value === 'high' ? '120' : '70', sex: 'male', drugs: false, pma: '' });
     setNotice('Preset loaded into the form · apply to recalculate');
   }
+  function changeDuration(next:number){setPlaying(false);setDuration(next);setTime(t=>Math.min(t,next));setNotice(`Course length set to ${clock(next)} · predictions recalculated`);}
   const params = micro ? Object.entries(microconstants(p)) : Object.entries(p).filter(([k]) => k !== 'ke0');
   return <>
     <header className="topbar"><div className="brand"><span className="brand-icon"><Activity size={23}/></span><div>compartment<span>PROPOFOL PK LAB</span></div></div><div className="header-right"><span className="education-badge"><FlaskConical size={14}/> Educational workspace</span><button className="text-button" onClick={() => setReferenceOpen(true)}><BookOpen size={17}/> References & about</button></div></header>
@@ -115,25 +120,25 @@ export default function App() {
         <label className="field">Targeting mode<select aria-label="Targeting mode" value={mode} onChange={e=>{setMode(e.target.value as TargetMode | 'prescribed');reset();setNotice('Targeting mode changed · simulation reset');}}><option value="ce">Effect-site targeted · Ce</option><option value="cp">Plasma targeted · Cp</option><option value="prescribed">Prescribed input experiment</option></select></label>
         {mode !== 'prescribed' ? <><label className="field">New {mode.toUpperCase()} target<span className="input-wrap"><input aria-label="New live target" type="number" min="0" step="any" value={liveTarget} onChange={e=>setLiveTarget(e.target.value)}/><small>µg/mL</small></span></label><button className="apply" onClick={applyTarget}>Apply target at {clock(time)}</button><p className="explain">Adds an event now, including during playback. A zero target stops simulated input. Ce evolves through the model.</p><details className="controller-note"><summary>How targeting works</summary><p>The controller solves a theoretical 10-second input pulse. Cp mode aims for the next plasma value. Ce mode forecasts the pulse response over at least eight effect-site time constants, then recalculates. No pump rate or plasma ceiling is imposed; brief rates may be large. This is a numerical teaching algorithm, not a commercial controller.</p></details></> : <form onSubmit={apply}><p className="explain">Arbitrary prescribed input for exploring the underlying PK behavior.</p>
           <label className="field">Simulated administration rate<span className="input-wrap"><input aria-label="Simulated administration rate" type="number" min="0" step="any" value={input.rate} onChange={e => setInput({ ...input, rate: e.target.value })}/><small>mg/min</small></span>{input.rate.trim()&&<RateEquivalent rate={Number(input.rate)} weight={patient.weight}/>}</label>
-          <label className="field">Stop simulated input at<span className="input-wrap"><input aria-label="Stop simulated input at" type="number" min="0.01" max="60" step="any" value={input.stop} onChange={e => setInput({ ...input, stop: e.target.value })}/><small>min</small></span></label>
-          {error && <p className="error" role="alert">{error}</p>}<button className="apply" type="submit">Apply & reset simulation</button><p className="form-hint">Changes take effect when applied.</p>
+          <label className="field">Stop simulated input at<span className="input-wrap"><input aria-label="Stop simulated input at" type="number" min="0.01" max={MAX_END} step="any" value={input.stop} onChange={e => setInput({ ...input, stop: e.target.value })}/><small>min</small></span></label>
+          {input.stop.trim()&&Number(input.stop)>duration&&<p className="explain">Simulated input continues to the selected course end at {clock(duration)}; the entered stop time is {clock(Number(input.stop))}.</p>}{error && <p className="error" role="alert">{error}</p>}<button className="apply" type="submit">Apply & reset simulation</button><p className="form-hint">Changes take effect when applied.</p>
         </form>}{mode !== 'prescribed' && error && <p className="error" role="alert">{error}</p>}</aside>
         <section className="center-panel">
-          <div className="card chart-card"><div className="chart-toolbar"><span className="status"><i className={playing ? 'running' : ''}/>{playing ? 'PLAYING' : time === END ? 'COMPLETE' : 'PAUSED'}</span><div className="segmented"><button aria-pressed={preview} className={preview ? 'active' : ''} onClick={() => setPreview(true)}>Full course</button><button aria-pressed={!preview} className={!preview ? 'active' : ''} onClick={() => setPreview(false)}>Live window</button></div></div>
-            <Charts observations={bisMode==='observed'?observations:[]} weight={patient.weight} rows={scenario.rows} time={time} stop={mode === 'prescribed' ? course.stop : null} mode={mode} preview={preview} onSeek={t => { setTime(t); setPlaying(false); }}/>
-            <div className="playback"><button className="play-button" onClick={() => { if (time === END) setTime(0); setPlaying(!playing); }}>{playing ? <Pause size={18}/> : <Play size={18}/>} {playing ? 'Pause' : time > 0 && time < END ? 'Resume' : 'Play'}</button><button className="icon-button" aria-label="Reset simulation" title="Reset simulation" onClick={reset}><RotateCcw size={18}/></button><button className="jump" onClick={() => setTime(t => Math.min(END, t + 5))}><SkipForward size={17}/> +5 min</button><span className="playback-spacer"/><label className="speed">Playback<select aria-label="Playback speed" value={speed} onChange={e => setSpeed(Number(e.target.value))}>{[0.5, 1, 2, 5, 10, 30, 60].map(s => <option key={s} value={s}>{s}×</option>)}</select></label><div className="elapsed"><strong>{clock(time)}</strong><span>/ 60:00</span></div></div>
-            <input className="scrubber" aria-label="Simulation time" type="range" min="0" max="60" step={1 / 60} value={time} onChange={e => { setTime(Number(e.target.value)); setPlaying(false); }}/>
+          <div className="card chart-card"><div className="chart-toolbar"><span className="status"><i className={playing ? 'running' : ''}/>{playing ? 'PLAYING' : time === duration ? 'COMPLETE' : 'PAUSED'}</span><label className="speed course-length">Course length<select aria-label="Course length" value={duration} onChange={e=>changeDuration(Number(e.target.value))}>{[60,90,120,180,240,360,480].map(minutes=><option key={minutes} value={minutes}>{minutes<60?`${minutes} min`:minutes%60===0?`${minutes/60} hr`:`${Math.floor(minutes/60)} hr ${minutes%60} min`}</option>)}</select></label><div className="segmented"><button aria-pressed={preview} className={preview ? 'active' : ''} onClick={() => setPreview(true)}>Full course</button><button aria-pressed={!preview} className={!preview ? 'active' : ''} onClick={() => setPreview(false)}>Live window</button></div></div>
+            <Charts observations={bisMode==='observed'?observations:[]} weight={patient.weight} rows={scenario.rows} time={time} duration={duration} stop={mode === 'prescribed' ? course.stop : null} mode={mode} preview={preview} onSeek={t => { setTime(t); setPlaying(false); }}/>
+            <div className="playback"><button className="play-button" onClick={() => { if (time === duration) setTime(0); setPlaying(!playing); }}>{playing ? <Pause size={18}/> : <Play size={18}/>} {playing ? 'Pause' : time > 0 && time < duration ? 'Resume' : 'Play'}</button><button className="icon-button" aria-label="Reset simulation" title="Reset simulation" onClick={reset}><RotateCcw size={18}/></button><button className="jump" onClick={() => setTime(t => Math.min(duration, t + 5))}><SkipForward size={17}/> +5 min</button><span className="playback-spacer"/><label className="speed">Playback<select aria-label="Playback speed" value={speed} onChange={e => setSpeed(Number(e.target.value))}>{[0.5, 1, 2, 5, 10, 30, 60].map(s => <option key={s} value={s}>{s}×</option>)}</select></label><div className="elapsed"><strong>{clock(time)}</strong><span>/ {clock(duration)}</span></div></div>
+            <input className="scrubber" aria-label="Simulation time" type="range" min="0" max={duration} step={1 / 60} value={time} onChange={e => { setTime(Number(e.target.value)); setPlaying(false); }}/>
           </div>
           <div className="course-note" role="status">{detail.label} · {notice}<span>Full course shows calculated future values; live window shows elapsed time only.</span></div>
-          {mode !== 'prescribed' ? <Timeline events={events} mode={mode} time={time} onChange={changeEvents}/> : (<div className="card course-card"><div className="section-title"><h2>Input course</h2><span className="subtle">60 simulated minutes</span></div><div className="course-track"><div style={{ width: `${course.stop / END * 100}%` }}/><span style={{ left: `${time / END * 100}%` }}/></div><div className="course-events"><div><b>00:00</b><span>Simulated input begins</span><strong>{course.rate.toFixed(1)} mg/min</strong><RateEquivalent rate={course.rate} weight={patient.weight}/></div><div><b>{clock(course.stop)}</b><span>Simulated input stops</span><strong>Redistribution & elimination</strong></div><div><b>60:00</b><span>End of experiment</span><strong>End of calculated course</strong></div></div></div>)}
+          {mode !== 'prescribed' ? <>{hiddenEventCount>0&&<p className="duration-note">{hiddenEventCount} target {hiddenEventCount===1?'event is':'events are'} after {clock(duration)}. Extend the course to restore {hiddenEventCount===1?'it':'them'}.</p>}<Timeline events={activeEvents} mode={mode} time={time} duration={duration} onChange={changeEvents}/></> : (<div className="card course-card"><div className="section-title"><h2>Input course</h2><span className="subtle">{clock(duration)} course duration</span></div><div className="course-track"><div style={{ width: `${Math.min(100,course.stop / duration * 100)}%` }}/><span style={{ left: `${time / duration * 100}%` }}/></div><div className="course-events"><div><b>00:00</b><span>Simulated input begins</span><strong>{course.rate.toFixed(1)} mg/min</strong><RateEquivalent rate={course.rate} weight={patient.weight}/></div><div><b>{clock(course.stop)}</b><span>Simulated input stops</span><strong>Redistribution & elimination</strong></div><div><b>{clock(duration)}</b><span>End of experiment</span><strong>End of calculated course</strong></div></div></div>)}
 
         </section>
         <aside className="right-panel"><div className="card readouts"><div className="eyebrow">MODEL PREDICTIONS</div>{mode !== 'prescribed' && <div className="target-reading"><span>Target {mode.toUpperCase()}</span><b>{current.target?.toFixed(2)} <small>µg/mL</small></b></div>}<div className="reading teal"><label>Predicted plasma <b>Cp</b></label><div>{current.cp.toFixed(2)}<small>µg/mL</small></div></div><div className="reading violet"><label>Predicted effect site <b>Ce</b></label><div>{current.ce.toFixed(2)}<small>µg/mL</small></div></div><div className="reading small"><label>Simulated administration</label>{current.loadingPulseStart!==null&&<p className="loading-text">Loading / bolus-like pulse in progress</p>}<div>{current.rate.toFixed(1)}<small>mg/min</small></div><RateEquivalent rate={current.rate} weight={patient.weight}/><p className="rate-conversion-note">mg/min × 1,000 ÷ {patient.weight} kg<br/>Uses applied total body weight.</p></div><div className="total"><span>Total simulated mass</span><b>{current.administered.toFixed(1)} <small>mg</small></b></div></div>
           <div className="card parameters"><div className="section-title"><h2>Model inspector</h2></div><div className="segmented"><button aria-pressed={!micro} className={!micro ? 'active' : ''} onClick={() => setMicro(false)}>V / clearances</button><button aria-pressed={micro} className={micro ? 'active' : ''} onClick={() => setMicro(true)}>Microconstants</button></div><dl>{params.map(([key, value]) => <div key={key}><dt>{key === 'cl' ? 'CL' : key.replace('v', 'V').replace('q', 'Q')}</dt><dd>{value.toFixed(3)} <small>{micro ? 'min⁻¹' : key.startsWith('v') ? 'L' : 'L/min'}</small></dd></div>)}{!micro && <div><dt>ke0</dt><dd>{p.ke0.toFixed(3)} <small>min⁻¹</small></dd></div>}</dl><p className="explain">{micro ? 'Derived: k10 = CL/V1; k12 = Q2/V1; k21 = Q2/V2; k13 = Q3/V1; k31 = Q3/V3.' : detail.classification}</p></div>
         </aside>
       </div>
-      <BISPanel key={JSON.stringify(patient)} mode={bisMode} onMode={setBISMode} observations={observations} onChange={setObservations} time={time} rows={scenario.rows} preview={preview} model={modelKey} weight={patient.weight} onSeek={t=>{setTime(t);setPlaying(false);}}/>
-      {compare&&<ModelComparison results={comparison} patient={patient} time={time} preview={preview} mode={mode} onSeek={t=>{setTime(t);setPlaying(false);}}/>}
+      <BISPanel key={JSON.stringify(patient)} mode={bisMode} onMode={setBISMode} observations={observations} onChange={setObservations} time={time} rows={scenario.rows} preview={preview} duration={duration} model={modelKey} weight={patient.weight} onSeek={t=>{setTime(t);setPlaying(false);}}/>
+      {compare&&<ModelComparison results={comparison} patient={patient} time={time} preview={preview} duration={duration} mode={mode} onSeek={t=>{setTime(t);setPlaying(false);}}/>}
       <div className="model-toggle"><label><input type="checkbox" checked={showModel} onChange={e=>setShowModel(e.target.checked)}/> Show PK/PD model</label><span>Explore redistribution, elimination and effect-site lag</span></div>
       {showModel && <><CompartmentAnimation weight={patient.weight} sample={current} parameters={p} ceiling={concentrationCeiling} highlight={showMath?highlight:null}/>
         <div className="model-toggle"><label><input type="checkbox" checked={showMath} onChange={e=>setShowMath(e.target.checked)}/> Show mathematics</label><span>Live substitutions · instantaneous rates · conservation of mass</span></div>
