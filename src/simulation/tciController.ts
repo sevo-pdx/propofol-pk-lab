@@ -10,6 +10,8 @@ export interface ControllerOptions {
 }
 export interface TCISample extends PKState {
   cp: number; c2: number; c3: number; rate: number; target: number;
+  /** Display annotation only: first positive control pulse after a target increase. */
+  loadingPulseStart: number | null;
 }
 export function validateEvents(events: readonly TargetEvent[], end: number): TargetEvent[] {
   u(end, 'min');
@@ -107,16 +109,20 @@ export function simulateTCI(p: PKParameters, mode: TargetMode, events: readonly 
   for (let i = 1; i / 60 < end; i++) boundaries.push(i / 60);
   const times = boundaries.sort((a, b) => a - b).filter((t, i, list) => i === 0 || t - list[i - 1]! > 1e-10);
   const decisions = [...controls].sort((a, b) => a - b);
-  let decision = 0, state = zeroState(), rate = 0;
+  let decision = 0, state = zeroState(), rate = 0, previousTarget = 0;
+  let loadingPulseStart: number | null = null;
   const rows: TCISample[] = [];
   for (const time of times) {
     state = advance(state, p, u(rate, 'mg/min'), u(Math.max(0, time - state.time), 'min'), { maxStep: u(options.integrationStep ?? 1 / 60, 'min') });
     const target = targetAt(sorted, time);
     if (decision < decisions.length && decisions[decision]! <= time + 1e-10) {
       rate = controller.rate(state, target);
+      // Entire first interval is marked; no clinical rate threshold or bolus algorithm is inferred.
+      loadingPulseStart = target > previousTarget && rate > 0 ? time : null;
+      previousTarget = target;
       while (decision < decisions.length && decisions[decision]! <= time + 1e-10) decision++;
     }
-    rows.push({ ...state, ...concentrations(state, p), rate, target });
+    rows.push({ ...state, ...concentrations(state, p), rate, target, loadingPulseStart });
   }
   return rows;
 }

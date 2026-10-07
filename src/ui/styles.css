@@ -34,3 +34,23 @@
 .bis-log table { width: 100%; text-align: left; border-collapse: collapse; font-size: 13px; }
 .bis-log td,.bis-log th { padding: 10px; border-bottom: 1px solid #e2e8ec; }
 @media(max-width:700px) { .bis-panel { padding: 16px; } .bis-panel>.section-title { flex-direction: column; } .bis-entry-grid { grid-template-columns: 1fr; gap: 16px; } .bis-panel>.section-title .field { width: 100%; min-width: 0; } }
+
+.rate-trend-controls {display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:14px 0;color:#526d75;font-size:11px}
+.rate-trend-controls label {display:flex;align-items:center;gap:6px}
+.rate-trend-controls select {background:white;border:1px solid var(--border);border-radius:5px;padding:5px;color:var(--ink)}
+.dual-chart-units {display:flex;justify-content:space-between;gap:16px;font-size:9px;letter-spacing:.5px;color:var(--muted);margin:16px 0 8px}
+.smooth-line {fill:none;stroke:#3266a8;stroke-width:2;stroke-dasharray:7 3;pointer-events:none}
+.smooth-text,.concentration-chart text.smooth-axis {color:#3266a8;fill:#3266a8}
+.smooth-axis {stroke:#3266a8}.concentration-chart text.smooth-axis {stroke:none}
+.legend .smooth-key:before {background:#3266a8}
+.legend .loading-key:before {background:#f1d0a4;border:1px solid #b67626;height:9px}
+.loading-band {fill:#e9b975;fill-opacity:.28;pointer-events:none}
+.loading-marker {stroke:#b67626;stroke-width:1.5;stroke-dasharray:3 3;pointer-events:none}
+.loading-text {color:#98601f;font-weight:600}
+.trend-explanation,.loading-explanation {color:var(--muted);font-size:11px;line-height:1.65;margin:14px 0}
+.loading-summary {display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#8b581f;font-size:11px;margin-top:12px}
+.loading-summary button {padding:6px 9px;background:#fbf2e5;color:#84501b;border:1px solid #edd6b6;border-radius:4px;font:11px var(--mono)}
+.loading-pulse-list {display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.loading-pulse-list button {display:flex;flex-direction:column;gap:6px;text-align:left;background:#fbf5ec;border:1px solid #edd6b6;border-radius:6px;color:#84501b;padding:12px;font-size:12px}
+.loading-pulse-list strong {font:500 17px var(--mono)}.loading-pulse-list span {font-size:10px}
+@media(max-width:760px){.dual-chart-units {font-size:8px;letter-spacing:0}.rate-trend-controls {gap:10px}.loading-summary button {font-size:10px}}

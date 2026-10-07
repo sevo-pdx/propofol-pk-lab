@@ -8,7 +8,7 @@ export function buildScenario(patient: PatientCovariates, course: Course, model:
   if (!Number.isFinite(course.stop) || course.stop <= 0 || course.stop > END) throw new Error('Stop time must be greater than 0 and at most 60 minutes.');
   const evaluation = model.evaluate(patient);
   const states = simulate(evaluation.parameters, [{ time: u(0, 'min'), rate: u(course.rate, 'mg/min') }, { time: u(course.stop, 'min'), rate: u(0, 'mg/min') }], u(END, 'min'), u(1 / 60, 'min'));
-  const rows = states.map(s => ({ ...s, ...concentrations(s, evaluation.parameters), rate: s.time < course.stop ? course.rate : 0, target: null as number | null }));
+  const rows = states.map(s => ({ ...s, ...concentrations(s, evaluation.parameters), rate: s.time < course.stop ? course.rate : 0, target: null as number | null, loadingPulseStart: null as number | null }));
   return { evaluation, rows };
 }
 export type Sample = ReturnType<typeof buildScenario>['rows'][number];
